@@ -1994,6 +1994,10 @@ enum Orient {
     /// both lie on `l` (its ends, points on it, or points coincident with either; one of them may
     /// lie on it by what else holds it).
     Along(usize, usize, usize, f64),
+    /// Which way line `b` runs against line `a`: the sign of their directions' dot product for a
+    /// `Parallel` pair, of their cross product for a `Perpendicular` one (`true`). Turned end for
+    /// end, a line holds either just as well (#7872).
+    Sense(usize, usize, bool),
 }
 
 /// An orientation's signed offset in a state (a corner's distance from the opposite side, an
@@ -2031,6 +2035,12 @@ fn offset(s: &State, o: Orient) -> Option<(f64, f64, f64)> {
             let (a, b) = s.line(l);
             let (pp, pq) = (s.p(p), s.p(q));
             ((b - a).normalized()?.dot(pq - pp), size, coords(&[pp, pq, a, b]))
+        }
+        // Unit directions: the offset is the cosine (or sine) of the angle between the lines.
+        Orient::Sense(l, m, across) => {
+            let ((a0, a1), (b0, b1)) = (s.line(l), s.line(m));
+            let (u, v) = ((a1 - a0).normalized()?, (b1 - b0).normalized()?);
+            (if across { u.cross(v) } else { u.dot(v) }, 1.0, coords(&[a0, a1, b0, b1]))
         }
     })
 }
@@ -2193,6 +2203,8 @@ fn orients(s: &State, sub: &[(Block, Vec<usize>)]) -> Vec<(Orient, Vec<usize>)> 
             // A line tangent to a circle: the circle stays on its side (away from their ends, the
             // other tangent of that direction is a diameter away; at an end they share, the other
             // tangent from the line's far end is its mirror image).
+            ConstraintKind::Parallel { a, b } if line(a).is_some() && line(b).is_some() => out.push((Orient::Sense(a, b, false), vec![*ci])),
+            ConstraintKind::Perpendicular { a, b } if line(a).is_some() && line(b).is_some() => out.push((Orient::Sense(a, b, true), vec![*ci])),
             ConstraintKind::Tangent { a, b } => {
                 let (l, c) = if s.is_line(a) { (a, b) } else { (b, a) };
                 if s.is_line(l)

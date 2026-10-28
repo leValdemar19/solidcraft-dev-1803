@@ -227,3 +227,53 @@ fn a_point_a_distance_along_a_linked_line_keeps_its_side() {
         }
     }
 }
+
+/// #7872: a line from a linked rail's end held parallel to it (10 long), and a line from that
+/// line's tip held perpendicular to it (8 long). Turned end for end, each holds its constraint
+/// just as well, so only the sense they were drawn with tells the solutions apart: the mirror
+/// image counts as a flip, and the rail moved far keeps both lines the way they ran.
+#[test]
+fn lines_held_parallel_or_perpendicular_to_a_linked_line_keep_their_sense() {
+    let rail = |top: f64| vec![LinkGeom::Line(Vec2::new(40.0, top), Vec2::new(40.0, 0.0))];
+    let mut stored = Sketch::new();
+    let link = stored.add_link(LinkKind::Project, source(), &rail(30.0)).unwrap();
+    let l1 = stored.link_curves(&link)[0];
+    let top = stored.link_points(&link)[0];
+    assert!(near(stored.points[top].pos, 40.0, 30.0));
+    let up = stored.add_line(Vec2::new(40.0, 30.0), Vec2::new(40.0, 40.0), Some(top), None, None).unwrap();
+    let (_, tip) = stored.curves[up].kind.ends().unwrap();
+    let side = stored.add_line(Vec2::new(40.0, 40.0), Vec2::new(48.0, 40.0), Some(tip), None, None).unwrap();
+    let (_, far) = stored.curves[side].kind.ends().unwrap();
+    stored.add_constraint(ConstraintKind::Parallel { a: up, b: l1 }, None).unwrap();
+    stored.add_constraint(ConstraintKind::Length { l: up, value: 10.0 }, None).unwrap();
+    stored.add_constraint(ConstraintKind::Perpendicular { a: side, b: l1 }, None).unwrap();
+    stored.add_constraint(ConstraintKind::Length { l: side, value: 8.0 }, None).unwrap();
+    assert!(solve(&mut stored).ok());
+    assert!(near(stored.points[tip].pos, 40.0, 40.0) && near(stored.points[far].pos, 48.0, 40.0));
+
+    // Moved 600 mm up the rail, both lines turned end for end solve every constraint too.
+    let mut mirrored = stored.clone();
+    mirrored.update_link(&link, &rail(630.0)).unwrap();
+    mirrored.points[tip].pos = Vec2::new(40.0, 620.0);
+    mirrored.points[far].pos = Vec2::new(32.0, 620.0);
+    assert!(solve(&mut mirrored).ok());
+    assert!(near(mirrored.points[tip].pos, 40.0, 620.0) && near(mirrored.points[far].pos, 32.0, 620.0), "the mirror image holds");
+    assert_eq!(flips_from_stored(&mirrored, &stored).len(), 2, "both lines turned");
+    // Only the perpendicular line turned is a flip of that line alone.
+    let mut one = mirrored.clone();
+    one.points[tip].pos = Vec2::new(40.0, 640.0);
+    one.points[far].pos = Vec2::new(32.0, 640.0);
+    assert!(solve(&mut one).ok());
+    assert_eq!(flips_from_stored(&one, &stored).len(), 1);
+
+    // Walked there, and farther, the lines keep running up and to the right.
+    for top in [630.0, 2000.0, 12.0] {
+        let mut sk = stored.clone();
+        sk.update_link(&link, &rail(top)).unwrap();
+        let report = solve_after_link_move(&mut sk, &stored, &stored.driving_values(), Analysis::Full);
+        assert!(report.is_some_and(|r| r.keeps_orientation()), "{top}");
+        let (at, end) = (sk.points[tip].pos, sk.points[far].pos);
+        assert!(near(at, 40.0, top + 10.0) && near(end, 48.0, top + 10.0), "{top}: {at:?} {end:?}");
+        assert!(flips_from_stored(&sk, &stored).is_empty(), "{top}");
+    }
+}
