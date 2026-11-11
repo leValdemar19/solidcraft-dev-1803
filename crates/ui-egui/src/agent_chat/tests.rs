@@ -5594,6 +5594,10 @@ fn a_long_sign_in_box_scrolls_inside_a_short_docked_assistant() {
         // A new chat: its tip is drawn below the sign-in box, where the conversation goes.
         h.app.agent_chat.items.clear();
         h.app.agent_chat.input.clear();
+        // Files on the message make the message box taller than its usual height.
+        for i in 0..2 {
+            h.app.agent_chat.add_file(attach::Attachment::imported(format!("part-{i}.step")));
+        }
         h.app.agent_chat.state = Some(State::NeedsAuth);
         h.frames(8);
         assert_eq!(h.app.panel_runtime().is_some(), shared);
@@ -5604,6 +5608,8 @@ fn a_long_sign_in_box_scrolls_inside_a_short_docked_assistant() {
         let conversation = rect_of("agent_chat:conversation").expect("the conversation");
         assert!(window.expand(1.0).contains_rect(body), "shared {shared}: the Assistant {body:?} fits the window");
         assert!(body.expand(1.0).contains_rect(composer), "shared {shared}: the message box {composer:?} stays inside {body:?}");
+        let send = rect_of("agent_chat:send").expect("the send button");
+        assert!(body.contains_rect(send), "shared {shared}: the send button {send:?} is in view in {body:?}");
         assert!(providers.bottom() <= composer.top() + 1.0, "shared {shared}: the sign-in box {providers:?} ends above the message box {composer:?}");
         assert!(
             conversation.bottom() <= composer.top() + 1.0,

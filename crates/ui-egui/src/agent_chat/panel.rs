@@ -1401,7 +1401,9 @@ fn top_controls(chat: &mut AgentChat, view: &PanelView, ui: &mut egui::Ui, state
     let needs_auth = state == State::NeedsAuth;
     let picker_max = if shared || needs_auth {
         let t = Tokens::get();
-        let composer = view.composer_height.unwrap_or(48.0 + t.control_height * 3.0 + t.space_8 * 2.0 + t.space_6 * 3.0);
+        // The shared host hands over last frame's composer height; the default layout keeps its own.
+        let measured = if shared { view.composer_height } else { ui.data(|d| d.get_temp::<f32>(composer_height_id())) };
+        let composer = measured.unwrap_or(48.0 + t.control_height * 3.0 + t.space_8 * 2.0 + t.space_6 * 3.0);
         (ui.available_height() - composer - ui.spacing().item_spacing.y).max(0.0)
     } else {
         ui.available_height() / 3.0
@@ -1589,6 +1591,9 @@ fn composer(chat: &mut AgentChat, view: &PanelView, ui: &mut egui::Ui, state: St
         footer.response.rect.height()
     });
     chat.report.composer_height = Some(composer.inner);
+    if !view.shared {
+        ui.data_mut(|d| d.insert_temp(composer_height_id(), composer.inner));
+    }
     if pick_clicked {
         // The pill goes where the caret is in the box.
         chat.actions.push(PanelAction::StartPick { at: caret(ui.ctx()) });
@@ -2743,6 +2748,12 @@ fn user_text(ui: &mut egui::Ui, text: &str, context: &Context, gone: &[bool], ha
 #[cfg(not(target_arch = "wasm32"))]
 fn input_id() -> Id {
     Id::unique("sc_agent_chat_input")
+}
+
+/// The default layout's composer height last frame, which the sign-in box leaves free (#15087).
+#[cfg(not(target_arch = "wasm32"))]
+fn composer_height_id() -> Id {
+    Id::unique("sc_agent_chat_composer_height")
 }
 
 /// Where the caret is in the message box (a character), if it has been in it.
